@@ -68,9 +68,14 @@ function step(): void {
   if (!game) {
     titleT++;
     audio.setMood('castle');
+    input.sticksEnabled = false;
     if (input.lClick) {
       const b = titleButtonAt(input.mx, input.my, hasSave);
-      if (b) { audio.sfx('craft'); startGame(b === 'continue'); }
+      if (b === 'touch') {
+        // cycle Auto -> On -> Off
+        input.setTouchPref(input.touchPref === '' ? 'on' : input.touchPref === 'on' ? 'off' : '');
+        audio.sfx('click');
+      } else if (b) { audio.sfx('craft'); startGame(b === 'continue'); }
     }
   } else {
     const captured = uiUpdate(game);
@@ -97,6 +102,15 @@ function render(): void {
     renderer.drawSky(ctx, DAY * 0.74, titleT * 0.4, 20);
     drawTitle(ctx, hasSave, titleT);
   }
+  if (input.touchUI && window.innerHeight > window.innerWidth) {
+    ctx.fillStyle = 'rgba(8,6,14,0.82)';
+    ctx.fillRect(0, VH / 2 - 22, VW, 44);
+    ctx.font = 'bold 14px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f0d76a';
+    ctx.fillText('Turn your device sideways to play', VW / 2, VH / 2 + 5);
+    ctx.textAlign = 'left';
+  }
   ctx.restore();
 }
 
@@ -106,6 +120,7 @@ let acc = 0;
 function frame(now: number): void {
   acc += Math.min(100, now - last);
   last = now;
+  input.poll(now);
   let n = 0;
   while (acc >= STEP_MS && n < 5) {
     step();

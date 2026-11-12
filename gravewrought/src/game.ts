@@ -255,8 +255,8 @@ export class Game {
     p.inv[2] = { id: 'crude_axe', n: 1 };
     p.inv[3] = { id: 'torch', n: 8 };
     g.snapCamera();
-    g.say('Welcome to the Order, rookie. Your missions are in the journal (J).');
-    g.say('Press H for controls.');
+    g.say(input.touchUI ? 'Welcome to the Order, rookie. Your missions are in the Journal.' : 'Welcome to the Order, rookie. Your missions are in the journal (J).');
+    g.say(input.touchUI ? 'Tap ? for controls.' : 'Press H for controls.');
     return g;
   }
 
@@ -427,7 +427,7 @@ export class Game {
       if (have >= m.n) continue;
       this.prog[m.id] = Math.min(m.n, have + n);
       if (this.prog[m.id] >= m.n) {
-        this.say(`Mission complete: ${m.title}. Claim it in your journal (J).`);
+        this.say(`Mission complete: ${m.title}. Claim it in your journal.`);
         audio.sfx('craft');
       }
     }
@@ -580,12 +580,19 @@ export class Game {
     if (p.potionCd > 0) p.potionCd--;
     if (this.warnT > 0) this.warnT--;
 
-    const wx = this.cam.x + input.mx, wy = this.cam.y + input.my;
+    let wx = this.cam.x + input.mx, wy = this.cam.y + input.my;
+    let lmb = input.lmb;
+    // the on-screen aim stick points the held item and uses it while pushed
+    if (input.aimOn) { wx = p.cx + input.aimX * 88; wy = p.y + 12 + input.aimY * 88; lmb = true; }
     const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
     const inReach = Math.hypot(tx * TILE + 8 - p.cx, ty * TILE + 8 - p.cy) <= 92;
     this.target = null;
 
-    if (!uiCaptured && input.rClick) this.interact(tx, ty, inReach);
+    // on a touch screen, tapping a chest, the dispatch board or the altar interacts with it
+    const tt0 = w.tile(tx, ty);
+    const touchThing = input.touchUI && !input.aimOn && (tt0 === T.Chest || tt0 === T.Board || tt0 === T.Altar);
+    if (touchThing) lmb = false;
+    if (!uiCaptured && (input.rClick || (touchThing && input.tap))) this.interact(tx, ty, inReach);
     if (p.useT > 0 && p.useItem) this.meleeTick();
 
     const s = p.held();
@@ -601,7 +608,7 @@ export class Game {
       if (tt === 'hammer') { valid = w.wall(tx, ty) !== WL.None && !td.opaque; wallTarget = true; }
       else valid = t !== T.Air && td.tool === tt && Number.isFinite(td.hp);
       if (valid && inReach) this.target = { x: tx, y: ty, ok: true };
-      if (!input.lmb) { this.mining.prog = 0; return; }
+      if (!lmb) { this.mining.prog = 0; return; }
       if (p.useT === 0) { this.startSwing(s, d, wx, wy); audio.sfx('swing'); }
       if (!valid || !inReach) { this.mining.prog = 0; return; }
       const m = this.mining;
@@ -628,7 +635,7 @@ export class Game {
     if (d.place !== undefined || d.placeWall !== undefined) {
       const ok = inReach && (d.place !== undefined ? this.canPlace(tx, ty, d.place) : this.canPlaceWall(tx, ty));
       if (inReach) this.target = { x: tx, y: ty, ok };
-      if (input.lmb && ok && p.placeCd === 0) {
+      if (lmb && ok && p.placeCd === 0) {
         if (d.place !== undefined) {
           w.set(tx, ty, d.place);
           if (d.place === T.Chest) w.chests.set(ty * w.w + tx, new Array(CHEST_SLOTS).fill(null));
@@ -645,7 +652,7 @@ export class Game {
 
     // --- weapons
     if (d.wpn) {
-      if (!input.lmb || p.useT > 0) return;
+      if (!lmb || p.useT > 0) return;
       const wt = d.wpn.type;
       if (wt === 'sword') { this.startSwing(s, d, wx, wy); audio.sfx('swing'); }
       else if (wt === 'whip') { this.startSwing(s, d, wx, wy); audio.sfx('whip'); }
@@ -674,7 +681,7 @@ export class Game {
     }
 
     // --- consumables
-    if (input.lClick) {
+    if (input.lClick || input.aimHit) {
       if (d.heal && p.hp < p.maxHp && p.potionCd === 0) {
         p.hp = Math.min(p.maxHp, p.hp + d.heal);
         p.potionCd = 600;

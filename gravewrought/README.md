@@ -4,7 +4,7 @@
 
 It blends two genres: the mood of a gothic action-platformer and the systems of a crafting sandbox. Everything in it is original. All art is drawn by code at startup, the music is an original chiptune piece synthesised in the browser, and no code or assets come from any other game. Dracula and Van Helsing come from Bram Stoker's 1897 novel, which is in the public domain.
 
-## What is in this build (v0.2)
+## What is in this build (v0.3)
 
 **The world**
 
@@ -44,6 +44,21 @@ It blends two genres: the mood of a gothic action-platformer and the systems of 
 | Shift + click | Quick-move between bag and chest |
 | M | Mute |
 | H | Help |
+
+### Touch screens
+
+On a phone or tablet the game shows on-screen controls the first time you touch the screen. The title screen has a **Touch controls** option to force them on or off. Play in landscape.
+
+| Control | Action |
+| --- | --- |
+| Left stick | Walk; pull down to drop through platforms |
+| Right stick | Aim and use the held item |
+| Jump button | Jump (hold for height) |
+| Touch the world | Use the held item at that spot |
+| Tap a chest, the dispatch board or the altar | Interact |
+| Tap the hotbar | Choose a slot |
+| Bag, Journal and ? buttons | Open the bag, the journal and help |
+| In the bag | Tap an item to inspect it, tap again to pick it up, hold to equip or split |
 
 ## Run it locally
 

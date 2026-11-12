@@ -5,7 +5,7 @@ import {
   slotName, slotColor, slotRarity, weaponStats, weaponClass, armorDef, isGear, type Slot, type MissionDef, type StatKey,
 } from './defs';
 import { icons, type Ctx } from './art';
-import { input } from './input';
+import { input, TOUCH } from './input';
 import { audio } from './audio';
 import { addTo, ACC_SLOTS, type Game, type RecipeRow } from './game';
 
@@ -179,6 +179,7 @@ export function uiUpdate(g: Game): boolean {
   const mx = input.mx, my = input.my;
   if (input.hit('KeyM')) audio.toggleMute();
   if (input.hit('KeyH')) g.help = !g.help;
+  input.sticksEnabled = !g.invOpen && !g.journal && !g.help && p.dead === 0;
   if (p.dead > 0) return true;
 
   const closeBag = () => {
@@ -222,6 +223,11 @@ export function uiUpdate(g: Game): boolean {
 
   const r = slotAt(g, mx, my);
   let changed = false;
+  // on a touch screen the first tap on an item shows what it is; the next tap picks it up
+  if (input.touchUI && g.invOpen && r && input.lClick && !g.cursor && r.list[r.i]) {
+    const key = `${r.kind}:${r.i}`;
+    if (inspected !== key) { inspected = key; input.lClick = false; audio.sfx('click'); }
+  } else if (input.lClick) inspected = '';
   if (g.invOpen) {
     if (r && input.lClick) { if (input.clickShift && !g.cursor) quickMove(g, r); else clickSlot(g, r); changed = true; }
     else if (r && input.rClick) { rightClickSlot(g, r); changed = true; }
@@ -238,8 +244,12 @@ export function uiUpdate(g: Game): boolean {
     p.sel = r.i;
   }
   if (changed) g.refreshRecipes();
-  return over || g.cursor !== null;
+  // a finger that has lifted no longer "hovers" over a panel the way a mouse does
+  const held = !input.touchUI || input.ptrDown || input.lClick || input.rClick;
+  return (over && held) || g.cursor !== null;
 }
+
+let inspected = '';
 
 // ---------------------------------------------------------------- drawing
 
@@ -431,7 +441,7 @@ export function drawUI(c: Ctx, g: Game): void {
   // messages
   g.msgs.forEach((m, i) => {
     c.globalAlpha = Math.min(1, m.t / 60);
-    const base = g.invOpen || g.journal ? 8 : 300;
+    const base = g.invOpen || g.journal ? 8 : input.touchUI ? 246 : 300;
     const y = g.invOpen || g.journal ? base + i * 10 : base - (g.msgs.length - 1 - i) * 10;
     txt(c, m.text, g.invOpen || g.journal ? 150 : 10, y + (g.invOpen || g.journal ? 4 : 0), '#e8dcb8', 7);
   });
@@ -494,7 +504,7 @@ export function drawUI(c: Ctx, g: Game): void {
   if (g.cursor) {
     c.drawImage(icons[g.cursor.id], Math.round(mx - 8), Math.round(my - 8));
     if (g.cursor.n > 1) txt(c, String(g.cursor.n), mx + 9, my + 9, '#e8e4d8', 6, 'right');
-  } else if (g.invOpen || my > HB_Y - 4) {
+  } else if (g.invOpen || (my > HB_Y - 4 && !input.touchUI)) {
     const r = slotAt(g, mx, my);
     const s = r ? r.list[r.i] : null;
     if (s) drawTooltip(c, tooltipLines(g, s), mx, my);
@@ -517,10 +527,11 @@ export function drawUI(c: Ctx, g: Game): void {
     c.globalAlpha = 1;
   }
 
+  if (input.touchUI) drawTouch(c);
   if (g.help) drawHelp(c);
 }
 
-const HELP: [string, string][] = [
+const HELP_KEYS: [string, string][] = [
   ['A / D', 'Walk'],
   ['Space or W', 'Jump (hold for height)'],
   ['S', 'Drop through platforms'],
@@ -534,7 +545,53 @@ const HELP: [string, string][] = [
   ['H', 'Show or hide this page'],
 ];
 
+const HELP_TOUCH: [string, string][] = [
+  ['Left stick', 'Walk · pull down to drop through platforms'],
+  ['Right stick', 'Aim and use the held item'],
+  ['Jump', 'Jump (hold for height)'],
+  ['Touch the world', 'Use the held item at that spot: mine, place, strike'],
+  ['Tap a chest or board', 'Open it'],
+  ['Tap the hotbar', 'Choose a slot'],
+  ['Bag', 'Bag, equipment and crafting'],
+  ['In the bag', 'Tap to inspect, tap again to pick up, hold to equip or split'],
+  ['Journal', 'Rank and missions'],
+  ['?', 'Show or hide this page'],
+];
+
+/** The on-screen sticks and buttons. */
+export function drawTouch(c: Ctx): void {
+  const ring = (x: number, y: number, r: number, fill: string, edge: string) => {
+    c.fillStyle = fill;
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = edge; c.lineWidth = 1;
+    c.beginPath(); c.arc(x, y, r - 0.5, 0, Math.PI * 2); c.stroke();
+  };
+  if (input.sticksEnabled) {
+    for (const [st, base, label] of [[input.stick, TOUCH.stick, 'Move'], [input.aim, TOUCH.aim, 'Use']] as const) {
+      const on = st.id >= 0;
+      const bx = on ? st.bx : base.x, by = on ? st.by : base.y;
+      ring(bx, by, base.r, 'rgba(20,16,30,0.35)', 'rgba(201,162,39,0.55)');
+      let dx = on ? st.x - bx : 0, dy = on ? st.y - by : 0;
+      const m = Math.hypot(dx, dy);
+      if (m > base.r) { dx = (dx / m) * base.r; dy = (dy / m) * base.r; }
+      ring(bx + dx, by + dy, 12, on ? 'rgba(240,215,106,0.7)' : 'rgba(201,162,39,0.4)', 'rgba(246,231,168,0.8)');
+      if (!on) txt(c, label, bx, by + 2.5, '#f6e7a8', 6, 'center', true);
+    }
+    const j = TOUCH.jump;
+    ring(j.x, j.y, j.r, input.keys.has('Space') ? 'rgba(240,215,106,0.55)' : 'rgba(20,16,30,0.35)', 'rgba(201,162,39,0.55)');
+    txt(c, 'Jump', j.x, j.y + 2.5, '#f6e7a8', 7, 'center', true);
+  }
+  for (const b of TOUCH.buttons) {
+    c.fillStyle = 'rgba(20,16,30,0.6)';
+    c.fillRect(b.x, b.y, b.w, b.h);
+    c.fillStyle = 'rgba(201,162,39,0.6)';
+    c.fillRect(b.x, b.y, b.w, 1); c.fillRect(b.x, b.y + b.h - 1, b.w, 1); c.fillRect(b.x, b.y, 1, b.h); c.fillRect(b.x + b.w - 1, b.y, 1, b.h);
+    txt(c, b.label, b.x + b.w / 2, b.y + 12, '#f6e7a8', 7, 'center', true);
+  }
+}
+
 function drawHelp(c: Ctx): void {
+  const HELP = input.touchUI ? HELP_TOUCH : HELP_KEYS;
   const x = 150, y = 40, w = 340, h = 60 + HELP.length * 13 + 56;
   panel(c, x, y, w, h);
   txt(c, 'How to Play', x + w / 2, y + 20, '#c9a227', 12, 'center', true);
@@ -554,11 +611,15 @@ function drawHelp(c: Ctx): void {
 export const TITLE_BUTTONS = [
   { id: 'new', label: 'New World', x: 250, y: 214, w: 140, h: 22 },
   { id: 'continue', label: 'Continue', x: 250, y: 242, w: 140, h: 22 },
+  { id: 'touch', label: '', x: 250, y: 292, w: 140, h: 18 },
 ];
+
+const touchLabel = () => `Touch controls: ${input.touchPref === 'off' ? 'Off' : input.touchPref === 'on' ? 'On' : 'Auto'}`;
 
 export function titleButtonAt(mx: number, my: number, hasSave: boolean): string | null {
   for (const b of TITLE_BUTTONS) {
     if (b.id === 'continue' && !hasSave) continue;
+    if (b.id === 'touch' && !input.touchCapable) continue;
     if (inRect(mx, my, b.x, b.y, b.w, b.h)) return b.id;
   }
   return null;
@@ -585,13 +646,15 @@ export function drawTitle(c: Ctx, hasSave: boolean, t: number): void {
   const hover = titleButtonAt(input.mx, input.my, hasSave);
   for (const b of TITLE_BUTTONS) {
     if (b.id === 'continue' && !hasSave) continue;
+    if (b.id === 'touch' && !input.touchCapable) continue;
     panel(c, b.x, b.y, b.w, b.h);
     if (hover === b.id) { c.fillStyle = 'rgba(201,162,39,0.2)'; c.fillRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4); }
-    txt(c, b.label, b.x + b.w / 2, b.y + 15, hover === b.id ? '#f6e7a8' : '#e8e4d8', 10, 'center', true);
+    if (b.id === 'touch') txt(c, touchLabel(), b.x + b.w / 2, b.y + 12, hover === b.id ? '#f6e7a8' : '#b8b2a4', 7, 'center');
+    else txt(c, b.label, b.x + b.w / 2, b.y + 15, hover === b.id ? '#f6e7a8' : '#e8e4d8', 10, 'center', true);
   }
-  if (hasSave) txt(c, 'A new world replaces your saved one.', VW / 2, 280, '#8a8478', 6, 'center');
+  if (hasSave) txt(c, 'A new world replaces your saved one.', VW / 2, 278, '#8a8478', 6, 'center');
   c.globalAlpha = 0.6 + 0.3 * Math.sin(t * 0.05);
-  txt(c, 'Keyboard and mouse', VW / 2, 330, '#b8b2a4', 7, 'center');
+  txt(c, input.touchUI ? 'Touch controls on · keyboard and mouse also work' : 'Keyboard and mouse', VW / 2, 330, '#b8b2a4', 7, 'center');
   c.globalAlpha = 1;
-  txt(c, 'v0.2 prototype', VW - 6, VH - 6, '#6a6478', 6, 'right');
+  txt(c, 'v0.3 prototype', VW - 6, VH - 6, '#6a6478', 6, 'right');
 }
