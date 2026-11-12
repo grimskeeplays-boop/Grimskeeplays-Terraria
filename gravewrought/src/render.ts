@@ -1,6 +1,6 @@
 // World rendering: sky, parallax skyline, tiles, lighting, characters.
 
-import { TILE, VW, VH, DAY, T, WL, TILES, ITEMS } from './defs';
+import { TILE, VW, VH, DAY, T, WL, TILES, ITEMS, ENEMIES } from './defs';
 import { mk, tileAtlas, wallAtlas, crackAtlas, moonSprite, treeTops, icons, VARIANTS, type Ctx } from './art';
 import { hash2, fbm2, clamp, lerpRgb, rgbCss, type RGB } from './util';
 import type { Game, Enemy } from './game';
@@ -86,9 +86,14 @@ export class Renderer {
 
   // ---------------------------------------------------------------- sky
 
-  drawSky(out: Ctx, time: number, camX: number, yoff: number): void {
+  drawSky(out: Ctx, time: number, camX: number, yoff: number, crimson = false): void {
     const t = time / DAY;
-    const [top, bot] = skyAt(t);
+    let [top, bot] = skyAt(t);
+    if (crimson) {
+      const k = 0.55 * nightAmt(t);
+      top = lerpRgb(top, [58, 4, 12], k);
+      bot = lerpRgb(bot, [130, 18, 30], k);
+    }
     const g = out.createLinearGradient(0, 0, 0, VH);
     g.addColorStop(0, rgbCss(top));
     g.addColorStop(0.75, rgbCss(bot));
@@ -113,6 +118,13 @@ export class Renderer {
       out.fillRect(mx - 70, my - 70, 140, 140);
       out.globalAlpha = night;
       out.drawImage(moonSprite, Math.round(mx - 24), Math.round(my - 24));
+      if (crimson) {
+        out.globalAlpha = 0.55 * night;
+        out.fillStyle = '#b00a1e';
+        out.beginPath();
+        out.arc(Math.round(mx) - 0.5, Math.round(my) - 0.5, 22.5, 0, Math.PI * 2);
+        out.fill();
+      }
       out.globalAlpha = 1;
     }
     if (night < 1 && t < 0.62) {
@@ -150,7 +162,9 @@ export class Renderer {
     const w = g.world, p = g.p;
     const [Lr, Lg, Lb] = this.L;
     const dec = this.dec;
-    const sun = sunAt(w.time / DAY);
+    let sun = sunAt(w.time / DAY);
+    if (g.event?.type === 'crimson') sun = lerpRgb(sun, [0.5, 0.2, 0.24], nightAmt(w.time / DAY));
+    else if (g.event?.type === 'fog') sun = [sun[0] * 0.62, sun[1] * 0.64, sun[2] * 0.7];
     for (let j = 0; j < RH; j++) {
       for (let i = 0; i < RW; i++) {
         const x = rx0 + i, y = ry0 + j, k = j * RW + i;
@@ -229,7 +243,7 @@ export class Renderer {
     const w = g.world, b = this.b;
     const cx = Math.floor(g.cam.x), cy = Math.floor(g.cam.y);
     const surfacePx = (w.spawnY + 2) * TILE;
-    this.drawSky(out, w.time, cx, clamp((surfacePx - (cy + VH / 2)) * 0.12, -60, 70));
+    this.drawSky(out, w.time, cx, clamp((surfacePx - (cy + VH / 2)) * 0.12, -60, 70), g.event?.type === 'crimson');
 
     b.clearRect(0, 0, VW, VH);
     const x0 = Math.floor(cx / TILE), x1 = Math.floor((cx + VW) / TILE);
@@ -263,7 +277,7 @@ export class Renderer {
         }
       }
     }
-    for (const [sx, sy, v] of tops) b.drawImage(treeTops[v % treeTops.length], sx + 8 - 32, sy + TILE - 56);
+    for (const [sx, sy, v] of tops) b.drawImage(treeTops[w.biomeAt(Math.floor((sx + cx) / TILE))][v % 3], sx + 8 - 32, sy + TILE - 56);
 
     const m = g.mining;
     if (m.prog > 0 && m.max > 0) {
@@ -281,14 +295,24 @@ export class Renderer {
     for (const q of g.projs) {
       b.save();
       b.translate(Math.round(q.x - cx), Math.round(q.y - cy));
+      if (q.kind === 'fire' || q.kind === 'orb') {
+        const big = q.kind === 'orb' ? 1 : 0;
+        b.fillStyle = q.col; b.fillRect(-3 - big, -2 - big, 6 + big * 2, 4 + big * 2); b.fillRect(-2 - big, -3 - big, 4 + big * 2, 6 + big * 2);
+        b.fillStyle = q.kind === 'orb' ? '#ffb3bd' : '#ffe08a'; b.fillRect(-1, -1, 2, 2);
+        b.restore();
+        continue;
+      }
       b.rotate(q.rot);
       if (q.kind === 'arrow') {
         b.fillStyle = '#96704b'; b.fillRect(-5, 0, 9, 1);
-        b.fillStyle = '#c4c6d0'; b.fillRect(3, -1, 2, 3);
+        b.fillStyle = q.col; b.fillRect(3, -1, 2, 3);
         b.fillStyle = '#b3122d'; b.fillRect(-6, -1, 2, 3);
       } else if (q.kind === 'knife') {
-        b.fillStyle = '#c4c6d0'; b.fillRect(-2, -1, 7, 2);
+        b.fillStyle = q.col; b.fillRect(-2, -1, 7, 2);
         b.fillStyle = '#3d2a20'; b.fillRect(-5, -1, 3, 2);
+      } else if (q.kind === 'bolt') {
+        b.fillStyle = q.col; b.fillRect(-5, -2, 10, 4);
+        b.fillStyle = '#ffffff'; b.fillRect(-2, -1, 6, 2);
       } else {
         b.fillStyle = '#d9d2b8'; b.fillRect(-3, -1, 7, 2);
         b.fillStyle = '#f3eedc'; b.fillRect(-4, -2, 2, 4); b.fillRect(3, -2, 2, 4);
@@ -314,6 +338,17 @@ export class Renderer {
     l.drawImage(this.buf, 0, 0);
     l.globalCompositeOperation = 'source-over';
     out.drawImage(this.lit, 0, 0);
+
+    if (g.event?.type === 'fog') {
+      const near = clamp(1 - (cy + VH / 2 - w.skyLimit * TILE) / 200, 0, 1);
+      if (near > 0) {
+        const fog = out.createLinearGradient(0, 0, 0, VH);
+        fog.addColorStop(0, `rgba(150,152,168,${0.22 * near})`);
+        fog.addColorStop(1, `rgba(170,172,186,${0.5 * near})`);
+        out.fillStyle = fog;
+        out.fillRect(0, 0, VW, VH);
+      }
+    }
 
     // unlit overlays
     if (g.target) {
@@ -421,43 +456,84 @@ export class Renderer {
   }
 
   private drawEnemy(b: Ctx, e: Enemy, cx: number, cy: number): void {
+    const def = ENEMIES[e.type];
+    const k = def.pal;
     const fl = e.flash > 0;
     const R = (x: number, y: number, w: number, h: number, col: string) => { b.fillStyle = fl ? '#ffffff' : col; b.fillRect(x, y, w, h); };
+    const dark = '#1a1218';
     b.save();
     b.translate(Math.round(e.x + e.w / 2 - cx), Math.round(e.y - cy));
     if (e.dir < 0) b.scale(-1, 1);
     const s = Math.round(Math.sin(e.t * 0.16) * 2);
-    if (e.type === 'ghoul') {
-      R(-3 - s, 18, 3, 8, '#33302c'); R(s, 18, 3, 8, '#3d3a35');
-      R(-4, 8, 8, 11, '#4a5a48'); R(-4, 8, 8, 1, '#5b6b55'); R(-4, 17, 2, 3, '#3d4a3b'); R(1, 18, 2, 2, '#3d4a3b');
-      R(-2, 1, 7, 7, '#7d8a70'); R(-2, 1, 7, 1, '#8e9b80'); R(2, 3, 1, 2, '#1a1218'); R(4, 3, 1, 2, '#1a1218');
-      R(4, 4, 1, 1, '#ff5a3a'); R(2, 6, 3, 1, '#2a1a1a');
-      R(2, 10, 7, 2, '#7d8a70'); R(2, 13, 6, 2, '#6d7a60'); R(9, 10, 1, 3, '#8e9b80');
-    } else if (e.type === 'skeleton') {
-      const bn = '#d9d2b8', bd = '#a39c84';
-      R(-3 - s, 19, 2, 9, bd); R(1 + s, 19, 2, 9, bn); R(-3, 17, 6, 2, bn);
-      R(-1, 9, 2, 8, bd); R(-4, 10, 8, 1, bn); R(-4, 12, 8, 1, bn); R(-3, 14, 6, 1, bn);
-      R(-3, 1, 7, 6, bn); R(-3, 1, 7, 1, '#f3eedc'); R(-2, 7, 5, 1, bd);
-      R(-1, 3, 2, 2, '#1a1218'); R(2, 3, 2, 2, '#1a1218'); R(1, 5, 1, 1, '#1a1218');
-      R(-5, 10, 1, 6 + s, bd); R(5, 10, 1, 6 - s, bn);
-    } else if (e.type === 'bat') {
-      const up = Math.sin(e.t * 0.5) > 0;
-      R(-2, 3, 4, 5, '#2a2233'); R(-2, 2, 1, 1, '#2a2233'); R(1, 2, 1, 1, '#2a2233');
-      R(-1, 4, 1, 1, '#ff3a3a'); R(1, 4, 1, 1, '#ff3a3a');
-      for (const sd of [-1, 1]) {
-        R(sd > 0 ? 2 : -7, up ? 1 : 5, 5, 3, '#3a2f47');
-        R(sd > 0 ? 5 : -7, up ? -1 : 7, 2, 2, '#3a2f47');
+    switch (def.sprite) {
+      case 'ghoul':
+        R(-3 - s, 18, 3, 8, k[4]); R(s, 18, 3, 8, k[4]);
+        R(-4, 8, 8, 11, k[2]); R(-4, 8, 8, 1, k[3]); R(-4, 17, 2, 3, k[4]); R(1, 18, 2, 2, k[4]);
+        R(-2, 1, 7, 7, k[0]); R(-2, 1, 7, 1, k[1]); R(2, 3, 1, 2, dark); R(4, 3, 1, 2, dark);
+        R(4, 4, 1, 1, k[5]); R(2, 6, 3, 1, '#2a1a1a');
+        R(2, 10, 7, 2, k[0]); R(2, 13, 6, 2, k[0]); R(9, 10, 1, 3, k[1]);
+        break;
+      case 'skeleton':
+        R(-3 - s, 19, 2, 9, k[1]); R(1 + s, 19, 2, 9, k[0]); R(-3, 17, 6, 2, k[0]);
+        R(-1, 9, 2, 8, k[1]); R(-4, 10, 8, 1, k[0]); R(-4, 12, 8, 1, k[0]); R(-3, 14, 6, 1, k[0]);
+        R(-3, 1, 7, 6, k[0]); R(-3, 1, 7, 1, k[2]); R(-2, 7, 5, 1, k[1]);
+        R(-1, 3, 2, 2, dark); R(2, 3, 2, 2, dark); R(1, 5, 1, 1, dark);
+        R(-5, 10, 1, 6 + s, k[1]); R(5, 10, 1, 6 - s, k[0]);
+        if (k[3]) {
+          R(-4, 9, 8, 5, k[3]); R(-4, 9, 8, 1, '#8d8f9c'); R(-3, 0, 7, 3, k[3]); R(-3, 0, 7, 1, '#8d8f9c');
+          R(6, 5, 1, 11, '#c4c6d0'); R(5, 14, 3, 1, '#8a6d14');
+        }
+        break;
+      case 'bat': {
+        const up = Math.sin(e.t * 0.5) > 0;
+        R(-2, 3, 4, 5, k[0]); R(-2, 2, 1, 1, k[0]); R(1, 2, 1, 1, k[0]);
+        R(-1, 4, 1, 1, k[2]); R(1, 4, 1, 1, k[2]);
+        for (const sd of [-1, 1]) {
+          R(sd > 0 ? 2 : -7, up ? 1 : 5, 5, 3, k[1]);
+          R(sd > 0 ? 5 : -7, up ? -1 : 7, 2, 2, k[1]);
+        }
+        break;
       }
-    } else {
-      b.globalAlpha = 0.62 + 0.2 * Math.sin(e.t * 0.08);
-      R(-4, 0, 8, 8, '#8fa8bc'); R(-3, -1, 6, 1, '#8fa8bc'); R(-2, 2, 5, 5, '#1a2230');
-      R(-1, 4, 1, 1, '#d0ffff'); R(2, 4, 1, 1, '#d0ffff');
-      for (let y = 8; y <= 22; y++) {
-        const hw = 4 + Math.floor((y - 8) * 0.25);
-        R(-hw, y, hw * 2, 1, y % 2 ? '#a9c4d6' : '#9fb8cc');
+      case 'wraith':
+        b.globalAlpha = 0.62 + 0.2 * Math.sin(e.t * 0.08);
+        R(-4, 0, 8, 8, k[1]); R(-3, -1, 6, 1, k[1]); R(-2, 2, 5, 5, '#1a2230');
+        R(-1, 4, 1, 1, k[2]); R(2, 4, 1, 1, k[2]);
+        for (let y = 8; y <= 22; y++) {
+          const hw = 4 + Math.floor((y - 8) * 0.25);
+          R(-hw, y, hw * 2, 1, y % 2 ? k[0] : k[1]);
+        }
+        for (let x = -7; x < 7; x++) R(x, 23, 1, 1 + ((x + 70 + (e.t >> 3)) % 3), k[0]);
+        R(3, 10, 6, 2, k[0]); R(9, 9, 1, 4, '#e0f4ff');
+        break;
+      case 'wolf': {
+        const run = e.ground ? Math.round(Math.sin(e.t * 0.4) * 2) : 2;
+        R(-12, 3, 4, 2, k[1]); R(-9, 4, 16, 6, k[0]); R(-8, 9, 13, 1, k[1]); R(-9, 4, 14, 1, k[1]);
+        R(5, 1, 6, 6, k[0]); R(10, 4, 3, 3, k[1]); R(6, -1, 2, 2, k[1]); R(8, 3, 1, 1, k[2]); R(12, 6, 1, 1, '#f3eedc');
+        R(-8 + run, 10, 2, 4, k[1]); R(-4 - run, 10, 2, 4, k[0]); R(3 + run, 10, 2, 4, k[1]); R(6 - run, 10, 2, 4, k[0]);
+        break;
       }
-      for (let x = -7; x < 7; x++) R(x, 23, 1, 1 + ((x + 70 + (e.t >> 3)) % 3), '#a9c4d6');
-      R(3, 10, 6, 2, '#a9c4d6'); R(9, 9, 1, 4, '#e0f4ff');
+      case 'thrall':
+        R(-6, 8, 4, 16, k[2]); R(-6, 8, 1, 16, '#3a0510');
+        R(-3 - s, 19, 3, 9, k[1]); R(s, 19, 3, 9, k[1]);
+        R(-4, 9, 8, 11, k[1]); R(-4, 8, 8, 2, k[2]);
+        R(-3, 1, 7, 7, k[0]); R(-3, 0, 7, 2, dark); R(1, 3, 1, 1, k[3]); R(3, 3, 1, 1, k[3]); R(2, 6, 1, 1, '#ffffff');
+        R(3, 11, 6, 2, k[1]); R(9, 11, 2, 2, k[0]);
+        break;
+      case 'dracula': {
+        if (e.mode === 1) b.globalAlpha = clamp(Math.abs(e.cd - 25) / 22, 0, 1);
+        const sway = Math.round(Math.sin(e.t * 0.1) * 1.5);
+        for (let y = 8; y <= 33; y++) {
+          const hw = 5 + Math.floor((y - 8) * 0.24) + (y > 22 ? sway : 0);
+          R(-hw, y, hw * 2, 1, k[1]);
+          R(-hw, y, 1, 1, k[2]); R(hw - 1, y, 1, 1, k[2]);
+        }
+        R(-3, 10, 6, 14, '#241a2c'); R(-1, 11, 2, 10, k[2]);
+        R(-6, 4, 3, 6, k[1]); R(3, 4, 3, 6, k[1]); R(-6, 4, 1, 6, k[2]); R(5, 4, 1, 6, k[2]);
+        R(-3, 1, 6, 7, k[0]); R(-3, 0, 6, 2, k[1]); R(0, 2, 1, 1, k[1]);
+        R(0, 4, 1, 1, k[3]); R(2, 4, 1, 1, k[3]); R(1, 6, 2, 1, '#5a0a16');
+        if (e.mode === 2) { R(6, 12, 3, 2, k[0]); R(-9, 12, 3, 2, k[0]); R(8, 8, 4, 4, k[3]); R(9, 9, 2, 2, '#ffb3bd'); }
+        break;
+      }
     }
     b.restore();
   }

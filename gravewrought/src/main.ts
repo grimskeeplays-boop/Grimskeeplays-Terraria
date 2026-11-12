@@ -4,11 +4,11 @@ import { VW, VH, DAY } from './defs';
 import { initArt } from './art';
 import { audio } from './audio';
 import { input, bindInput } from './input';
-import { Game, type GameSave } from './game';
+import { Game, SAVE_VERSION, type GameSave } from './game';
 import { Renderer } from './render';
 import { uiUpdate, drawUI, drawTitle, titleButtonAt } from './ui';
 
-const SAVE_KEY = 'gravewrought.save.v1';
+const SAVE_KEY = 'gravewrought.save.v2';
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 
@@ -23,7 +23,7 @@ function readSave(): GameSave | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as GameSave;
-    return s && s.v === 1 ? s : null;
+    return s && s.v === SAVE_VERSION ? s : null;
   } catch {
     return null;
   }

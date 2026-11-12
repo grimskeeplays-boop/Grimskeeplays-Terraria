@@ -1,7 +1,7 @@
 // Synthesised music and sound effects (Web Audio, no sample files).
 // The score is an original piece in D minor, arranged per mood.
 
-export type Mood = 'none' | 'day' | 'night' | 'cave' | 'castle';
+export type Mood = 'none' | 'day' | 'night' | 'cave' | 'castle' | 'boss';
 
 interface MoodCfg {
   bpm: number; lead: OscillatorType; leadGain: number; arp: OscillatorType; arpGain: number; arpEvery: number;
@@ -12,6 +12,7 @@ const MOODS: Record<Exclude<Mood, 'none'>, MoodCfg> = {
   day: { bpm: 122, lead: 'square', leadGain: 0.085, arp: 'triangle', arpGain: 0.07, arpEvery: 2, bassGain: 0.13, drums: 1, pad: 0, octave: 0 },
   night: { bpm: 146, lead: 'sawtooth', leadGain: 0.075, arp: 'square', arpGain: 0.04, arpEvery: 1, bassGain: 0.15, drums: 2, pad: 0, octave: 0 },
   cave: { bpm: 80, lead: 'triangle', leadGain: 0.07, arp: 'sine', arpGain: 0.075, arpEvery: 2, bassGain: 0.1, drums: 0, pad: 0.025, octave: -12 },
+  boss: { bpm: 172, lead: 'sawtooth', leadGain: 0.085, arp: 'square', arpGain: 0.045, arpEvery: 1, bassGain: 0.17, drums: 2, pad: 0.02, octave: 0 },
   castle: { bpm: 134, lead: 'sawtooth', leadGain: 0.07, arp: 'sawtooth', arpGain: 0.04, arpEvery: 1, bassGain: 0.13, drums: 1, pad: 0.02, octave: 0 },
 };
 
@@ -222,6 +223,9 @@ export class AudioSys {
       case 'drink': this.tone(t, 60, 0.08, 'sine', 0.14, b, true, 67); this.tone(t + 0.09, 62, 0.08, 'sine', 0.14, b, true, 69); break;
       case 'life': for (let i = 0; i < 4; i++) this.tone(t + i * 0.08, 69 + [0, 3, 7, 12][i], 0.14, 'triangle', 0.14, b, true); break;
       case 'jump': this.tone(t, 57, 0.08, 'sine', 0.05, b, true, 66); break;
+      case 'magic': this.tone(t, 81, 0.16, 'sine', 0.12, b, true, 93); this.tone(t, 69, 0.12, 'triangle', 0.08, b, true, 76); break;
+      case 'rankup': for (let i = 0; i < 6; i++) this.tone(t + i * 0.09, 62 + [0, 3, 7, 12, 15, 19][i], 0.22, 'square', 0.1, b, true); break;
+      case 'event': this.tone(t, 38, 1.1, 'sawtooth', 0.16, b, false, 31); this.tone(t, 45, 1.1, 'sawtooth', 0.1, b, false, 37); break;
       case 'click': this.tone(t, 72, 0.03, 'square', 0.04, b, true); break;
     }
   }
