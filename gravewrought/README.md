@@ -17,7 +17,7 @@ It blends two genres: the mood of a gothic action-platformer and the systems of 
 
 - Six hunter ranks, from Rookie to Dracula's Bane, earned by completing missions in the journal
 - 21 missions: kills, deliveries, crafting, scouting, surviving events, and the Count himself
-- Each rank unlocks a new tier of crafting (87 recipes in all) and lets rarer gear appear
+- Each rank unlocks a new tier of crafting (85 recipes in all) and lets rarer gear appear
 - Three world events: the Crimson Moon, the Grave Fog and the Legion Assault
 - Count Dracula as the final boss, summoned at the altar in his keep
 
